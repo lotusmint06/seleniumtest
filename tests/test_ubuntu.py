@@ -75,7 +75,7 @@ class TestUbuntuServer:
         test_name = "test_basic_connection"
         try:
             # 간단한 페이지 로드
-            self.driver.get("https://httpbin.org/get")
+            self.driver.get("https://www.hanatour.com")
             
             # 페이지 제목 확인
             assert "httpbin" in self.driver.title.lower()
@@ -96,7 +96,7 @@ class TestUbuntuServer:
         test_name = "test_google_search_headless"
         try:
             # Google 홈페이지로 이동
-            self.driver.get("https://www.google.com")
+            self.driver.get("https://www.hanatour.com")
             
             # 페이지 제목 확인
             assert "Google" in self.driver.title
