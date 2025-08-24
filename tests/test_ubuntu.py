@@ -1,15 +1,18 @@
 """
 Ubuntu 서버 환경용 테스트
 헤드리스 모드에서 안정적으로 실행되도록 최적화되었습니다.
+실패 시 자동 스크린샷 기능 포함
 """
 import pytest
 import os
 import time
+import traceback
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from utils.driver_factory import DriverFactory
 
 
 class TestUbuntuServer:
@@ -47,8 +50,21 @@ class TestUbuntuServer:
         if hasattr(self, 'driver'):
             self.driver.quit()
     
+    def _take_failure_screenshot(self, test_name):
+        """테스트 실패 시 스크린샷 촬영"""
+        try:
+            error_info = traceback.format_exc()
+            DriverFactory.take_screenshot_on_failure(
+                self.driver, 
+                test_name=test_name,
+                error_info=error_info
+            )
+        except Exception as e:
+            print(f"스크린샷 촬영 실패: {e}")
+    
     def test_basic_connection(self):
         """기본 연결 테스트"""
+        test_name = "test_basic_connection"
         try:
             # 간단한 페이지 로드
             self.driver.get("https://httpbin.org/get")
@@ -64,10 +80,12 @@ class TestUbuntuServer:
             
         except Exception as e:
             print(f"❌ 기본 연결 테스트 실패: {e}")
+            self._take_failure_screenshot(test_name)
             raise
     
     def test_google_search_headless(self):
         """Google 검색 테스트 (헤드리스 모드)"""
+        test_name = "test_google_search_headless"
         try:
             # Google 홈페이지로 이동
             self.driver.get("https://www.google.com")
@@ -96,10 +114,12 @@ class TestUbuntuServer:
             
         except Exception as e:
             print(f"❌ Google 검색 테스트 실패: {e}")
+            self._take_failure_screenshot(test_name)
             raise
     
     def test_screenshot_capture(self):
         """스크린샷 촬영 테스트"""
+        test_name = "test_screenshot_capture"
         try:
             # 테스트 페이지 로드
             self.driver.get("https://httpbin.org/html")
@@ -120,10 +140,12 @@ class TestUbuntuServer:
             
         except Exception as e:
             print(f"❌ 스크린샷 촬영 실패: {e}")
+            self._take_failure_screenshot(test_name)
             raise
     
     def test_memory_usage(self):
         """메모리 사용량 테스트"""
+        test_name = "test_memory_usage"
         try:
             # 여러 페이지를 순차적으로 로드하여 메모리 사용량 테스트
             test_urls = [
@@ -143,10 +165,12 @@ class TestUbuntuServer:
             
         except Exception as e:
             print(f"❌ 메모리 사용량 테스트 실패: {e}")
+            self._take_failure_screenshot(test_name)
             raise
     
     def test_error_handling(self):
         """오류 처리 테스트"""
+        test_name = "test_error_handling"
         try:
             # 존재하지 않는 페이지 접근
             self.driver.get("https://httpbin.org/status/404")
@@ -158,6 +182,7 @@ class TestUbuntuServer:
             
         except Exception as e:
             print(f"❌ 오류 처리 테스트 실패: {e}")
+            self._take_failure_screenshot(test_name)
             raise
 
 

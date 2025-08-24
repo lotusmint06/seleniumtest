@@ -9,34 +9,31 @@ from webdriver_manager.chrome import ChromeDriverManager
 from webdriver_manager.firefox import GeckoDriverManager
 from webdriver_manager.microsoft import EdgeChromiumDriverManager
 from config.config import TestConfig
+import os
+import time
+import traceback
 
 
 class DriverFactory:
-    """WebDriver 생성을 담당하는 팩토리 클래스"""
+    """WebDriver 팩토리 클래스"""
     
     @staticmethod
     def get_driver(browser=None, headless=None):
-        """
-        지정된 브라우저의 WebDriver 인스턴스를 반환합니다.
-        
-        Args:
-            browser (str): 브라우저 타입 ('chrome', 'firefox', 'edge')
-            headless (bool): 헤드리스 모드 여부
-            
-        Returns:
-            WebDriver: 설정된 WebDriver 인스턴스
-        """
+        """WebDriver 인스턴스 생성"""
         browser = browser or TestConfig.BROWSER
         headless = headless if headless is not None else TestConfig.HEADLESS
         
         if browser == 'chrome':
-            return DriverFactory._create_chrome_driver(headless)
+            driver = DriverFactory._create_chrome_driver(headless)
         elif browser == 'firefox':
-            return DriverFactory._create_firefox_driver(headless)
+            driver = DriverFactory._create_firefox_driver(headless)
         elif browser == 'edge':
-            return DriverFactory._create_edge_driver(headless)
+            driver = DriverFactory._create_edge_driver(headless)
         else:
             raise ValueError(f"지원하지 않는 브라우저: {browser}")
+        
+        DriverFactory._configure_driver(driver)
+        return driver
     
     @staticmethod
     def _create_chrome_driver(headless=False):
@@ -44,7 +41,7 @@ class DriverFactory:
         options = TestConfig.get_browser_options()
         if headless:
             options.add_argument('--headless')
-        
+
         # 추가 Chrome 옵션
         options.add_argument('--no-sandbox')
         options.add_argument('--disable-dev-shm-usage')
@@ -52,7 +49,7 @@ class DriverFactory:
         options.add_argument('--disable-extensions')
         options.add_argument('--disable-plugins')
         options.add_experimental_option('excludeSwitches', ['enable-logging'])
-        
+
         # 시스템에 설치된 ChromeDriver를 우선적으로 사용
         try:
             driver = webdriver.Chrome(options=options)
@@ -78,31 +75,53 @@ class DriverFactory:
         if headless:
             options.add_argument('--headless')
         
-        service = FirefoxService(GeckoDriverManager().install())
-        driver = webdriver.Firefox(service=service, options=options)
-        DriverFactory._configure_driver(driver)
-        return driver
+        try:
+            driver = webdriver.Firefox(options=options)
+            DriverFactory._configure_driver(driver)
+            return driver
+        except Exception as e:
+            print(f"시스템 GeckoDriver 실패: {e}")
+            # 대안: GeckoDriverManager 사용
+            try:
+                driver_path = GeckoDriverManager().install()
+                service = FirefoxService(driver_path)
+                driver = webdriver.Firefox(service=service, options=options)
+                DriverFactory._configure_driver(driver)
+                return driver
+            except Exception as e2:
+                print(f"GeckoDriverManager도 실패: {e2}")
+                raise
     
     @staticmethod
     def _create_edge_driver(headless=False):
         """Edge WebDriver 생성"""
-        from selenium.webdriver.edge.options import Options
-        options = Options()
+        options = TestConfig.get_browser_options()
         if headless:
             options.add_argument('--headless')
-        options.add_argument(f'--window-size={TestConfig.WINDOW_WIDTH},{TestConfig.WINDOW_HEIGHT}')
         
-        service = EdgeService(EdgeChromiumDriverManager().install())
-        driver = webdriver.Edge(service=service, options=options)
-        DriverFactory._configure_driver(driver)
-        return driver
+        try:
+            driver = webdriver.Edge(options=options)
+            DriverFactory._configure_driver(driver)
+            return driver
+        except Exception as e:
+            print(f"시스템 EdgeDriver 실패: {e}")
+            # 대안: EdgeChromiumDriverManager 사용
+            try:
+                driver_path = EdgeChromiumDriverManager().install()
+                service = EdgeService(driver_path)
+                driver = webdriver.Edge(service=service, options=options)
+                DriverFactory._configure_driver(driver)
+                return driver
+            except Exception as e2:
+                print(f"EdgeChromiumDriverManager도 실패: {e2}")
+                raise
     
     @staticmethod
     def _configure_driver(driver):
-        """WebDriver 공통 설정"""
+        """WebDriver 설정"""
         driver.implicitly_wait(TestConfig.IMPLICIT_WAIT)
         driver.set_page_load_timeout(TestConfig.PAGE_LOAD_TIMEOUT)
-        driver.maximize_window()
+        driver.set_window_size(TestConfig.WINDOW_WIDTH, TestConfig.WINDOW_HEIGHT)
     
     @staticmethod
     def quit_driver(driver):
@@ -111,4 +130,43 @@ class DriverFactory:
             try:
                 driver.quit()
             except Exception as e:
-                print(f"드라이버 종료 중 오류 발생: {e}")
+                print(f"드라이버 종료 중 오류: {e}")
+    
+    @staticmethod
+    def take_screenshot_on_failure(driver, test_name=None, error_info=None):
+        """테스트 실패 시 스크린샷 촬영"""
+        try:
+            # 스크린샷 디렉토리 생성
+            screenshot_dir = TestConfig.SCREENSHOT_DIR
+            os.makedirs(screenshot_dir, exist_ok=True)
+            
+            # 파일명 생성
+            timestamp = int(time.time())
+            test_name = test_name or f"test_{timestamp}"
+            filename = f"failure_{test_name}_{timestamp}.png"
+            filepath = os.path.join(screenshot_dir, filename)
+            
+            # 스크린샷 촬영
+            driver.save_screenshot(filepath)
+            
+            # 오류 정보 로그 파일 생성
+            log_filename = f"failure_{test_name}_{timestamp}.log"
+            log_filepath = os.path.join(screenshot_dir, log_filename)
+            
+            with open(log_filepath, 'w', encoding='utf-8') as f:
+                f.write(f"테스트 실패 시간: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+                f.write(f"테스트명: {test_name}\n")
+                f.write(f"현재 URL: {driver.current_url}\n")
+                f.write(f"페이지 제목: {driver.title}\n")
+                if error_info:
+                    f.write(f"오류 정보:\n{error_info}\n")
+                f.write(f"스크린샷 파일: {filepath}\n")
+            
+            print(f"❌ 테스트 실패 스크린샷 저장: {filepath}")
+            print(f"❌ 오류 로그 저장: {log_filepath}")
+            
+            return filepath
+            
+        except Exception as e:
+            print(f"스크린샷 촬영 실패: {e}")
+            return None
