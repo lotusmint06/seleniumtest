@@ -1,23 +1,18 @@
 #!/bin/bash
 
 # Jenkins 환경용 Selenium 테스트 실행 스크립트
-# Jenkins CI/CD 파이프라인에서 사용하기 위해 최적화되었습니다.
-# sudo 권한 없이 실행 가능합니다.
-# externally-managed-environment 문제 해결 포함
-# 가상 디스플레이 없이 헤드리스 모드만 사용
+# 가상 디스플레이 없이 헤드리스 모드로 실행
 
-set -e
-
-echo "🚀 Jenkins 환경용 Selenium 테스트 실행"
-echo "=========================================="
+set -e  # 오류 발생 시 스크립트 중단
 
 # 색상 정의
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-NC='\033[0m'
+NC='\033[0m' # No Color
 
+# 로그 함수
 log_info() {
     echo -e "${BLUE}[INFO]${NC} $1"
 }
@@ -34,213 +29,157 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-# Jenkins 환경 확인
-check_jenkins_environment() {
-    log_info "Jenkins 환경 확인 중..."
-    
-    # Jenkins 환경 변수 확인
-    if [[ -n "$JENKINS_URL" ]] || [[ -n "$BUILD_NUMBER" ]] || [[ "$(whoami)" == "jenkins" ]]; then
-        log_success "Jenkins 환경 감지됨"
-        export JENKINS_MODE=true
-        log_info "BUILD_NUMBER: ${BUILD_NUMBER:-N/A}"
-        log_info "WORKSPACE: ${WORKSPACE:-$(pwd)}"
-    else
-        log_warning "Jenkins 환경이 아닙니다. 일반 모드로 실행합니다."
-        export JENKINS_MODE=false
-    fi
+# Jenkins 환경 감지
+is_jenkins() {
+    [ -n "$JENKINS_URL" ] || [ -n "$BUILD_NUMBER" ] || [ -d "/var/lib/jenkins" ]
 }
 
-# 시스템 의존성 확인 (sudo 없이)
+# 시스템 의존성 확인
 check_dependencies() {
     log_info "시스템 의존성 확인 중..."
     
     # Python 확인
     if ! command -v python3 &> /dev/null; then
-        log_error "Python3가 설치되지 않았습니다. 시스템 관리자에게 문의하세요."
-        exit 1
+        log_error "Python3가 설치되지 않았습니다."
+        log_info "시스템 관리자에게 다음 명령어로 설치를 요청하세요:"
+        log_info "sudo apt update && sudo apt install python3 python3-pip"
+        return 1
     fi
     
     # pip 확인
     if ! command -v pip3 &> /dev/null; then
-        log_error "pip3가 설치되지 않았습니다. 시스템 관리자에게 문의하세요."
-        exit 1
+        log_error "pip3가 설치되지 않았습니다."
+        log_info "시스템 관리자에게 다음 명령어로 설치를 요청하세요:"
+        log_info "sudo apt install python3-pip"
+        return 1
     fi
     
     # Chrome 확인
     if ! command -v google-chrome &> /dev/null; then
-        log_warning "Chrome이 설치되지 않았습니다. 시스템 관리자에게 설치를 요청하세요."
-        log_info "Chrome 설치 명령어: sudo apt install google-chrome-stable"
-    else
-        log_success "Chrome 확인됨: $(google-chrome --version)"
+        log_warning "Chrome이 설치되지 않았습니다."
+        log_info "시스템 관리자에게 다음 명령어로 설치를 요청하세요:"
+        log_info "wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -"
+        log_info "echo 'deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main' | sudo tee /etc/apt/sources.list.d/google-chrome.list"
+        log_info "sudo apt update && sudo apt install google-chrome-stable"
     fi
     
-    log_success "의존성 확인 완료"
+    log_success "시스템 의존성 확인 완료"
 }
 
 # Python 환경 설정
 setup_python_environment() {
-    log_info "Python 환경 설정 중..."
+    log_info "Python 가상환경 설정 중..."
     
-    if [[ "$JENKINS_MODE" == "true" ]]; then
-        # Jenkins 환경에서는 가상환경 사용 (externally-managed-environment 문제 해결)
-        log_info "Jenkins 모드: 가상환경 사용 (externally-managed-environment 문제 해결)"
-        
-        # 가상환경 생성 (권한 확인 후)
-        if [[ ! -d "venv" ]]; then
-            if [[ -w "." ]]; then
-                python3 -m venv venv
-                log_success "가상환경 생성 완료"
-            else
-                log_error "현재 디렉토리에 쓰기 권한이 없습니다"
-                exit 1
-            fi
-        fi
-        
-        # 가상환경 활성화
-        source venv/bin/activate
-        
-        # pip 업그레이드
-        pip install --upgrade pip
-        
-        # 패키지 설치
-        pip install -r requirements.txt
-        
-        log_success "가상환경 설정 완료"
-    else
-        # 일반 환경에서도 가상환경 사용
-        log_info "일반 모드: 가상환경 사용"
-        
-        # 가상환경 생성 (권한 확인 후)
-        if [[ ! -d "venv" ]]; then
-            if [[ -w "." ]]; then
-                python3 -m venv venv
-                log_success "가상환경 생성 완료"
-            else
-                log_error "현재 디렉토리에 쓰기 권한이 없습니다"
-                exit 1
-            fi
-        fi
-        
-        # 가상환경 활성화
-        source venv/bin/activate
-        pip install -r requirements.txt
-        
-        log_success "가상환경 설정 완료"
+    # 가상환경 생성
+    if [ ! -d "venv" ]; then
+        log_info "가상환경 생성 중..."
+        python3 -m venv venv
     fi
+    
+    # 가상환경 활성화 (Jenkins 호환 방식)
+    if is_jenkins; then
+        log_info "Jenkins 환경에서 가상환경 활성화 중..."
+        . venv/bin/activate
+    else
+        log_info "일반 환경에서 가상환경 활성화 중..."
+        . venv/bin/activate
+    fi
+    
+    # pip 업그레이드
+    log_info "pip 업그레이드 중..."
+    pip install --upgrade pip
+    
+    # 의존성 설치
+    log_info "Python 패키지 설치 중..."
+    pip install -r requirements.txt
+    
+    log_success "Python 환경 설정 완료"
 }
 
-# 환경 변수 설정
+# 환경 설정
 setup_environment() {
-    log_info "환경 변수 설정 중..."
+    log_info "환경 설정 중..."
     
-    # 기본 환경 변수 (헤드리스 모드)
-    export HEADLESS=true
-    export BROWSER=chrome
+    # 환경 변수 설정
+    export PYTHONPATH="${PWD}:${PYTHONPATH}"
+    export DISPLAY=":99"
     
-    # Jenkins 특별 설정
-    if [[ "$JENKINS_MODE" == "true" ]]; then
-        export PYTHONPATH="${PYTHONPATH}:${PWD}"
-        export CHROME_OPTIONS="--headless --no-sandbox --disable-dev-shm-usage --disable-gpu --disable-extensions --disable-plugins --disable-images --disable-javascript --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-renderer-backgrounding --disable-features=TranslateUI --disable-ipc-flooding-protection"
-        
-        # Jenkins 워크스페이스 설정
-        if [[ -n "$WORKSPACE" ]]; then
-            cd "$WORKSPACE"
-        fi
-    fi
+    # Chrome 옵션 설정
+    export CHROME_OPTIONS="--headless,--no-sandbox,--disable-dev-shm-usage,--disable-gpu,--disable-extensions,--disable-plugins,--disable-images,--disable-javascript,--disable-background-timer-throttling,--disable-backgrounding-occluded-windows,--disable-renderer-backgrounding,--disable-features=TranslateUI,--disable-ipc-flooding-protection"
     
-    # Ubuntu 환경 설정 파일 로드
-    if [[ -f "env.ubuntu" ]]; then
-        export $(cat env.ubuntu | grep -v '^#' | xargs)
-    fi
+    # 디렉토리 생성
+    mkdir -p reports/screenshots
+    mkdir -p logs
     
-    log_success "환경 변수 설정 완료"
+    log_success "환경 설정 완료"
 }
 
 # 테스트 실행
 run_tests() {
-    log_info "테스트 실행 중..."
+    log_info "Selenium 테스트 실행 중..."
     
-    # 테스트 디렉토리 생성
-    mkdir -p reports/screenshots
+    # 가상환경 활성화 확인
+    if [ -z "$VIRTUAL_ENV" ]; then
+        log_warning "가상환경이 활성화되지 않았습니다. 다시 활성화합니다."
+        . venv/bin/activate
+    fi
     
-    # 테스트 실행 (가상환경의 python 사용)
+    # 테스트 실행
     python -m pytest tests/ \
         -v \
         --html=reports/report.html \
         --self-contained-html \
         --tb=short \
         --disable-warnings \
-        --junitxml=reports/junit.xml
+        --junitxml=reports/junit.xml \
+        --capture=no
     
-    TEST_EXIT_CODE=$?
-    
-    if [[ $TEST_EXIT_CODE -eq 0 ]]; then
-        log_success "테스트 실행 완료"
+    if [ $? -eq 0 ]; then
+        log_success "모든 테스트가 성공적으로 완료되었습니다!"
     else
-        log_error "테스트 실행 실패 (종료 코드: $TEST_EXIT_CODE)"
+        log_error "일부 테스트가 실패했습니다."
+        return 1
     fi
-    
-    return $TEST_EXIT_CODE
 }
 
-# 결과 정리
+# 정리 작업
 cleanup() {
     log_info "정리 작업 중..."
     
-    # 오래된 파일 정리
-    find reports/screenshots -name "*.png" -mtime +7 -delete 2>/dev/null || true
-    find . -name "*.log" -mtime +30 -delete 2>/dev/null || true
+    # 가상환경 비활성화
+    if [ -n "$VIRTUAL_ENV" ]; then
+        deactivate
+    fi
+    
+    # 프로세스 정리
+    pkill -f chrome || true
+    pkill -f chromedriver || true
     
     log_success "정리 작업 완료"
 }
 
-# Jenkins 아티팩트 설정
-setup_jenkins_artifacts() {
-    if [[ "$JENKINS_MODE" == "true" ]]; then
-        log_info "Jenkins 아티팩트 설정 중..."
-        
-        # 테스트 결과를 Jenkins에서 접근 가능하도록 설정
-        if [[ -f "reports/report.html" ]]; then
-            echo "📊 HTML 리포트: reports/report.html"
-        fi
-        
-        if [[ -f "reports/junit.xml" ]]; then
-            echo "📋 JUnit 리포트: reports/junit.xml"
-        fi
-        
-        # 스크린샷 디렉토리 확인
-        if [[ -d "reports/screenshots" ]]; then
-            SCREENSHOT_COUNT=$(find reports/screenshots -name "*.png" | wc -l)
-            echo "📸 스크린샷 개수: $SCREENSHOT_COUNT"
-        fi
-        
-        log_success "Jenkins 아티팩트 설정 완료"
-    fi
-}
-
-# 메인 실행
+# 메인 실행 함수
 main() {
-    echo "시작 시간: $(date)"
-    echo "작업 디렉토리: $(pwd)"
+    log_info "Jenkins Selenium 테스트 시작"
+    log_info "작업 디렉토리: $(pwd)"
+    log_info "Python 버전: $(python3 --version)"
     
-    check_jenkins_environment
+    # 의존성 확인
     check_dependencies
+    
+    # Python 환경 설정
     setup_python_environment
+    
+    # 환경 설정
     setup_environment
+    
+    # 테스트 실행
     run_tests
-    TEST_RESULT=$?
+    
+    # 정리 작업
     cleanup
-    setup_jenkins_artifacts
     
-    echo "완료 시간: $(date)"
-    
-    if [[ $TEST_RESULT -eq 0 ]]; then
-        log_success "모든 작업이 성공적으로 완료되었습니다!"
-    else
-        log_error "작업이 실패했습니다 (종료 코드: $TEST_RESULT)"
-    fi
-    
-    exit $TEST_RESULT
+    log_success "Jenkins Selenium 테스트 완료"
 }
 
 # 스크립트 실행
