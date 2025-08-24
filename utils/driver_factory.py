@@ -49,6 +49,14 @@ class DriverFactory:
         options.add_argument('--disable-extensions')
         options.add_argument('--disable-plugins')
         options.add_experimental_option('excludeSwitches', ['enable-logging'])
+        
+        # 사용자 데이터 디렉토리 충돌 방지
+        import tempfile
+        import uuid
+        user_data_dir = tempfile.mkdtemp(prefix=f"chrome_user_data_{uuid.uuid4().hex[:8]}_")
+        options.add_argument(f'--user-data-dir={user_data_dir}')
+        options.add_argument('--no-first-run')
+        options.add_argument('--no-default-browser-check')
 
         # 시스템에 설치된 ChromeDriver를 우선적으로 사용
         try:
@@ -128,6 +136,21 @@ class DriverFactory:
         """WebDriver 종료"""
         if driver:
             try:
+                # 임시 사용자 데이터 디렉토리 정리
+                if hasattr(driver, 'options') and driver.options:
+                    for argument in driver.options.arguments:
+                        if argument.startswith('--user-data-dir='):
+                            import shutil
+                            import os
+                            user_data_dir = argument.split('=', 1)[1]
+                            if os.path.exists(user_data_dir):
+                                try:
+                                    shutil.rmtree(user_data_dir)
+                                    print(f"임시 디렉토리 정리됨: {user_data_dir}")
+                                except Exception as e:
+                                    print(f"임시 디렉토리 정리 실패: {e}")
+                            break
+                
                 driver.quit()
             except Exception as e:
                 print(f"드라이버 종료 중 오류: {e}")

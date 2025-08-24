@@ -34,6 +34,14 @@ class TestUbuntuServer:
         options.add_argument('--remote-debugging-port=9222')
         options.add_experimental_option('excludeSwitches', ['enable-logging'])
         
+        # 사용자 데이터 디렉토리 충돌 방지
+        import tempfile
+        import uuid
+        user_data_dir = tempfile.mkdtemp(prefix=f"chrome_user_data_{uuid.uuid4().hex[:8]}_")
+        options.add_argument(f'--user-data-dir={user_data_dir}')
+        options.add_argument('--no-first-run')
+        options.add_argument('--no-default-browser-check')
+        
         # 메모리 최적화
         options.add_argument('--disable-background-timer-throttling')
         options.add_argument('--disable-backgrounding-occluded-windows')
