@@ -11,7 +11,7 @@ class TestConfig:
     """테스트 설정 클래스"""
     
     # 기본 URL
-    BASE_URL = os.getenv('BASE_URL', 'https://www.google.com')
+    BASE_URL = os.getenv('BASE_URL', 'https://www.hanatour.com')
     
     # 브라우저 설정
     BROWSER = os.getenv('BROWSER', 'chrome').lower()
