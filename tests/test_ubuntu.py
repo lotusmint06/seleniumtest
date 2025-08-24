@@ -30,7 +30,7 @@ class TestUbuntuServer:
         options.add_argument('--disable-plugins')
         options.add_argument('--disable-images')
         options.add_argument('--disable-javascript')
-        options.add_argument('--window-size=1280,720')
+        options.add_argument('--window-size=1920,1080')
         options.add_argument('--remote-debugging-port=9222')
         options.add_experimental_option('excludeSwitches', ['enable-logging'])
         

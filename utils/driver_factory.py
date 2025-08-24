@@ -50,6 +50,9 @@ class DriverFactory:
         options.add_argument('--disable-plugins')
         options.add_experimental_option('excludeSwitches', ['enable-logging'])
         
+        # 해상도 1920x1080으로 고정
+        options.add_argument('--window-size=1920,1080')
+        
         # 사용자 데이터 디렉토리 충돌 방지
         import tempfile
         import uuid
