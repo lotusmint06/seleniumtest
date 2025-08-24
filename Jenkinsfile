@@ -4,7 +4,6 @@ pipeline {
     environment {
         // 환경 변수 설정
         PYTHON_VERSION = '3.8'
-        DISPLAY = ':99'
         HEADLESS = 'true'
         BROWSER = 'chrome'
     }
@@ -38,9 +37,6 @@ pipeline {
                         
                         echo "Chrome 확인:"
                         google-chrome --version || { echo "⚠️ Chrome이 설치되지 않았습니다. 시스템 관리자에게 설치를 요청하세요"; }
-                        
-                        echo "Xvfb 확인:"
-                        Xvfb -version || { echo "⚠️ Xvfb가 설치되지 않았습니다. 시스템 관리자에게 설치를 요청하세요"; }
                     '''
                 }
             }
@@ -65,23 +61,6 @@ pipeline {
                         pip install -r requirements.txt
                         
                         echo "가상환경 설정 완료"
-                    '''
-                }
-            }
-        }
-        
-        stage('Start Virtual Display') {
-            steps {
-                echo '🖥️ 가상 디스플레이 시작 중...'
-                script {
-                    // 기존 Xvfb 프로세스 종료
-                    sh 'pkill Xvfb 2>/dev/null || true'
-                    
-                    // 새로운 가상 디스플레이 시작
-                    sh '''
-                        Xvfb :99 -screen 0 1280x720x24 -ac +extension GLX +render -noreset &
-                        export DISPLAY=:99
-                        sleep 3
                     '''
                 }
             }
@@ -132,9 +111,6 @@ pipeline {
             steps {
                 echo '🧹 정리 작업 중...'
                 script {
-                    // 가상 디스플레이 정리
-                    sh 'pkill Xvfb 2>/dev/null || true'
-                    
                     // 오래된 파일 정리
                     sh '''
                         find reports/screenshots -name "*.png" -mtime +7 -delete 2>/dev/null || true
@@ -182,12 +158,6 @@ pipeline {
                     archiveArtifacts artifacts: 'reports/**/*', fingerprint: true
                 }
             }
-        }
-        
-        cleanup {
-            echo '🧹 최종 정리 중...'
-            // 가상 디스플레이 강제 종료
-            sh 'pkill -f Xvfb 2>/dev/null || true'
         }
     }
 }

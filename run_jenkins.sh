@@ -4,6 +4,7 @@
 # Jenkins CI/CD 파이프라인에서 사용하기 위해 최적화되었습니다.
 # sudo 권한 없이 실행 가능합니다.
 # externally-managed-environment 문제 해결 포함
+# 가상 디스플레이 없이 헤드리스 모드만 사용
 
 set -e
 
@@ -73,14 +74,6 @@ check_dependencies() {
         log_success "Chrome 확인됨: $(google-chrome --version)"
     fi
     
-    # Xvfb 확인
-    if ! command -v Xvfb &> /dev/null; then
-        log_warning "Xvfb가 설치되지 않았습니다. 시스템 관리자에게 설치를 요청하세요."
-        log_info "Xvfb 설치 명령어: sudo apt install xvfb"
-    else
-        log_success "Xvfb 확인됨"
-    fi
-    
     log_success "의존성 확인 완료"
 }
 
@@ -140,15 +133,14 @@ setup_python_environment() {
 setup_environment() {
     log_info "환경 변수 설정 중..."
     
-    # 기본 환경 변수
+    # 기본 환경 변수 (헤드리스 모드)
     export HEADLESS=true
     export BROWSER=chrome
-    export DISPLAY=:99
     
     # Jenkins 특별 설정
     if [[ "$JENKINS_MODE" == "true" ]]; then
         export PYTHONPATH="${PYTHONPATH}:${PWD}"
-        export CHROME_OPTIONS="--no-sandbox --disable-dev-shm-usage --disable-gpu --disable-extensions --disable-plugins --disable-images --disable-javascript --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-renderer-backgrounding --disable-features=TranslateUI --disable-ipc-flooding-protection"
+        export CHROME_OPTIONS="--headless --no-sandbox --disable-dev-shm-usage --disable-gpu --disable-extensions --disable-plugins --disable-images --disable-javascript --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-renderer-backgrounding --disable-features=TranslateUI --disable-ipc-flooding-protection"
         
         # Jenkins 워크스페이스 설정
         if [[ -n "$WORKSPACE" ]]; then
@@ -162,31 +154,6 @@ setup_environment() {
     fi
     
     log_success "환경 변수 설정 완료"
-}
-
-# 가상 디스플레이 시작
-start_virtual_display() {
-    log_info "가상 디스플레이 시작 중..."
-    
-    # Xvfb가 설치되어 있는지 확인
-    if ! command -v Xvfb &> /dev/null; then
-        log_warning "Xvfb가 설치되지 않았습니다. 가상 디스플레이를 시작할 수 없습니다."
-        log_info "시스템 관리자에게 다음 명령어로 설치를 요청하세요:"
-        log_info "sudo apt install xvfb"
-        return 1
-    fi
-    
-    # 기존 Xvfb 프로세스 종료
-    pkill Xvfb 2>/dev/null || true
-    
-    # 새로운 가상 디스플레이 시작
-    Xvfb :99 -screen 0 1280x720x24 -ac +extension GLX +render -noreset &
-    export DISPLAY=:99
-    
-    # 디스플레이 준비 대기
-    sleep 3
-    
-    log_success "가상 디스플레이 시작 완료"
 }
 
 # 테스트 실행
@@ -219,9 +186,6 @@ run_tests() {
 # 결과 정리
 cleanup() {
     log_info "정리 작업 중..."
-    
-    # 가상 디스플레이 정리
-    pkill Xvfb 2>/dev/null || true
     
     # 오래된 파일 정리
     find reports/screenshots -name "*.png" -mtime +7 -delete 2>/dev/null || true
@@ -263,7 +227,6 @@ main() {
     check_dependencies
     setup_python_environment
     setup_environment
-    start_virtual_display
     run_tests
     TEST_RESULT=$?
     cleanup
