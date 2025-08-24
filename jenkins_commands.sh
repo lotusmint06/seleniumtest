@@ -8,6 +8,10 @@ set -e
 echo "🚀 Jenkins Selenium 테스트 시작"
 echo "=========================================="
 
+# 0. webdriver-manager 캐시 정리
+echo "🧹 webdriver-manager 캐시 정리 중..."
+rm -rf ~/.wdm || true
+
 # 1. 가상환경 생성 (Jenkins 호환 방식)
 echo "📦 가상환경 생성 중..."
 python3 -m venv venv
@@ -34,7 +38,22 @@ echo "📁 디렉토리 생성 중..."
 mkdir -p reports/screenshots
 mkdir -p logs
 
-# 7. 테스트 실행
+# 7. ChromeDriver 확인 및 설치
+echo "🔍 ChromeDriver 확인 중..."
+if ! command -v chromedriver &> /dev/null; then
+    echo "📥 ChromeDriver 설치 중..."
+    # ChromeDriver 설치 스크립트 실행
+    if [ -f "install_chromedriver.sh" ]; then
+        chmod +x install_chromedriver.sh
+        ./install_chromedriver.sh
+    else
+        echo "⚠️ install_chromedriver.sh 파일이 없습니다. webdriver-manager를 사용합니다."
+    fi
+else
+    echo "✅ ChromeDriver가 이미 설치되어 있습니다: $(chromedriver --version)"
+fi
+
+# 8. 테스트 실행
 echo "🧪 테스트 실행 중..."
 python -m pytest tests/ \
     -v \
@@ -45,7 +64,7 @@ python -m pytest tests/ \
     --junitxml=reports/junit.xml \
     --capture=no
 
-# 8. 결과 확인
+# 9. 결과 확인
 echo "📊 테스트 결과 확인 중..."
 if [ -f "reports/report.html" ]; then
     echo "✅ HTML 리포트 생성됨: reports/report.html"
@@ -55,13 +74,13 @@ if [ -f "reports/junit.xml" ]; then
     echo "✅ JUnit 리포트 생성됨: reports/junit.xml"
 fi
 
-# 9. 스크린샷 개수 확인
+# 10. 스크린샷 개수 확인
 if [ -d "reports/screenshots" ]; then
     SCREENSHOT_COUNT=$(find reports/screenshots -name "*.png" | wc -l)
     echo "📸 스크린샷 개수: $SCREENSHOT_COUNT"
 fi
 
-# 10. 정리
+# 11. 정리
 echo "🧹 정리 작업 중..."
 pkill -f chrome || true
 pkill -f chromedriver || true

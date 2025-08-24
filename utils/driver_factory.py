@@ -65,16 +65,63 @@ class DriverFactory:
             return driver
         except Exception as e:
             print(f"시스템 ChromeDriver 실패: {e}")
-            # 대안: ChromeDriverManager 사용
+            # 대안: ChromeDriverManager 사용 (캐시 정리 포함)
             try:
+                # webdriver-manager 캐시 정리
+                import os
+                import shutil
+                wdm_cache_dir = os.path.expanduser("~/.wdm")
+                if os.path.exists(wdm_cache_dir):
+                    print(f"webdriver-manager 캐시 정리 중: {wdm_cache_dir}")
+                    shutil.rmtree(wdm_cache_dir)
+                
+                # ChromeDriverManager로 새로 다운로드
                 driver_path = ChromeDriverManager().install()
+                
+                # 실제 chromedriver 실행 파일 확인
+                if os.path.isdir(driver_path):
+                    # 디렉토리인 경우 chromedriver 파일 찾기
+                    for root, dirs, files in os.walk(driver_path):
+                        for file in files:
+                            if file == 'chromedriver' or file.startswith('chromedriver-'):
+                                driver_path = os.path.join(root, file)
+                                break
+                        if driver_path != ChromeDriverManager().install():
+                            break
+                
+                # 실행 권한 부여
+                if os.path.exists(driver_path):
+                    os.chmod(driver_path, 0o755)
+                    print(f"ChromeDriver 경로: {driver_path}")
+                
                 service = ChromeService(driver_path)
                 driver = webdriver.Chrome(service=service, options=options)
                 DriverFactory._configure_driver(driver)
                 return driver
             except Exception as e2:
                 print(f"ChromeDriverManager도 실패: {e2}")
-                raise
+                # 마지막 대안: 직접 chromedriver 경로 시도
+                try:
+                    # 일반적인 chromedriver 경로들 시도
+                    possible_paths = [
+                        '/usr/bin/chromedriver',
+                        '/usr/local/bin/chromedriver',
+                        '/snap/bin/chromedriver',
+                        'chromedriver'
+                    ]
+                    
+                    for path in possible_paths:
+                        if os.path.exists(path) and os.access(path, os.X_OK):
+                            print(f"직접 ChromeDriver 사용: {path}")
+                            service = ChromeService(path)
+                            driver = webdriver.Chrome(service=service, options=options)
+                            DriverFactory._configure_driver(driver)
+                            return driver
+                    
+                    raise Exception("사용 가능한 ChromeDriver를 찾을 수 없습니다")
+                except Exception as e3:
+                    print(f"직접 ChromeDriver 시도도 실패: {e3}")
+                    raise
     
     @staticmethod
     def _create_firefox_driver(headless=False):
