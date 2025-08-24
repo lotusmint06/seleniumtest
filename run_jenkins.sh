@@ -3,6 +3,7 @@
 # Jenkins 환경용 Selenium 테스트 실행 스크립트
 # Jenkins CI/CD 파이프라인에서 사용하기 위해 최적화되었습니다.
 # sudo 권한 없이 실행 가능합니다.
+# externally-managed-environment 문제 해결 포함
 
 set -e
 
@@ -88,21 +89,32 @@ setup_python_environment() {
     log_info "Python 환경 설정 중..."
     
     if [[ "$JENKINS_MODE" == "true" ]]; then
-        # Jenkins 환경에서는 시스템 Python 사용
-        log_info "Jenkins 모드: 시스템 Python 사용"
+        # Jenkins 환경에서는 가상환경 사용 (externally-managed-environment 문제 해결)
+        log_info "Jenkins 모드: 가상환경 사용 (externally-managed-environment 문제 해결)"
+        
+        # 가상환경 생성 (권한 확인 후)
+        if [[ ! -d "venv" ]]; then
+            if [[ -w "." ]]; then
+                python3 -m venv venv
+                log_success "가상환경 생성 완료"
+            else
+                log_error "현재 디렉토리에 쓰기 권한이 없습니다"
+                exit 1
+            fi
+        fi
+        
+        # 가상환경 활성화
+        source venv/bin/activate
         
         # pip 업그레이드
-        python3 -m pip install --upgrade pip --user
+        pip install --upgrade pip
         
-        # 패키지 설치 (사용자 디렉토리에)
-        python3 -m pip install --user -r requirements.txt
+        # 패키지 설치
+        pip install -r requirements.txt
         
-        # PATH 설정
-        export PATH="$HOME/.local/bin:$PATH"
-        
-        log_success "시스템 Python 환경 설정 완료"
+        log_success "가상환경 설정 완료"
     else
-        # 일반 환경에서는 가상환경 사용
+        # 일반 환경에서도 가상환경 사용
         log_info "일반 모드: 가상환경 사용"
         
         # 가상환경 생성 (권한 확인 후)
@@ -184,25 +196,14 @@ run_tests() {
     # 테스트 디렉토리 생성
     mkdir -p reports/screenshots
     
-    # 테스트 실행
-    if [[ "$JENKINS_MODE" == "true" ]]; then
-        # Jenkins 환경에서는 python3 직접 사용
-        python3 -m pytest tests/ \
-            -v \
-            --html=reports/report.html \
-            --self-contained-html \
-            --tb=short \
-            --disable-warnings \
-            --junitxml=reports/junit.xml
-    else
-        # 일반 환경에서는 가상환경의 python 사용
-        python -m pytest tests/ \
-            -v \
-            --html=reports/report.html \
-            --self-contained-html \
-            --tb=short \
-            --disable-warnings
-    fi
+    # 테스트 실행 (가상환경의 python 사용)
+    python -m pytest tests/ \
+        -v \
+        --html=reports/report.html \
+        --self-contained-html \
+        --tb=short \
+        --disable-warnings \
+        --junitxml=reports/junit.xml
     
     TEST_EXIT_CODE=$?
     

@@ -46,15 +46,25 @@ pipeline {
             }
         }
         
-        stage('Install Dependencies') {
+        stage('Setup Virtual Environment') {
             steps {
-                echo '📦 Python 의존성 설치 중...'
+                echo '🐍 가상환경 설정 중...'
                 script {
-                    // Python 패키지 설치 (사용자 디렉토리에)
+                    // 가상환경 생성 및 활성화
                     sh '''
-                        python3 -m pip install --upgrade pip --user
-                        python3 -m pip install --user -r requirements.txt
-                        export PATH="$HOME/.local/bin:$PATH"
+                        # 가상환경 생성
+                        python3 -m venv venv
+                        
+                        # 가상환경 활성화
+                        source venv/bin/activate
+                        
+                        # pip 업그레이드
+                        pip install --upgrade pip
+                        
+                        # 패키지 설치
+                        pip install -r requirements.txt
+                        
+                        echo "가상환경 설정 완료"
                     '''
                 }
             }
@@ -84,12 +94,16 @@ pipeline {
                     // 테스트 디렉토리 생성
                     sh 'mkdir -p reports/screenshots'
                     
-                    // 테스트 실행
+                    // 테스트 실행 (가상환경 사용)
                     sh '''
-                        export PYTHONPATH="${PYTHONPATH}:${PWD}"
-                        export PATH="$HOME/.local/bin:$PATH"
+                        # 가상환경 활성화
+                        source venv/bin/activate
                         
-                        python3 -m pytest tests/ \
+                        # 환경 변수 설정
+                        export PYTHONPATH="${PYTHONPATH}:${PWD}"
+                        
+                        # 테스트 실행
+                        python -m pytest tests/ \
                             -v \
                             --html=reports/report.html \
                             --self-contained-html \
