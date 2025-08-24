@@ -2,6 +2,7 @@
 
 # Ubuntu 서버용 Selenium 테스트 실행 스크립트
 # 헤드리스 모드로 최적화되어 있습니다.
+# Jenkins 환경에서도 안전하게 실행됩니다.
 
 set -e  # 오류 발생 시 스크립트 중단
 
@@ -61,26 +62,67 @@ check_system() {
         log_warning "Chrome이 설치되지 않았습니다. 설치를 권장합니다."
     fi
     
-    # 가상환경 확인
-    if [[ -d "venv" ]]; then
-        log_success "가상환경 확인됨"
-    else
-        log_warning "가상환경이 없습니다. 생성합니다..."
-        python3 -m venv venv
-        log_success "가상환경 생성 완료"
+    # 현재 사용자 확인
+    CURRENT_USER=$(whoami)
+    log_info "현재 사용자: $CURRENT_USER"
+    
+    # Jenkins 환경 확인
+    if [[ "$CURRENT_USER" == "jenkins" ]] || [[ -n "$JENKINS_URL" ]]; then
+        log_info "Jenkins 환경 감지됨"
+        export JENKINS_MODE=true
     fi
 }
 
-# 가상환경 활성화
-activate_venv() {
-    log_info "가상환경 활성화 중..."
-    source venv/bin/activate
+# 가상환경 설정 (Jenkins 환경 고려)
+setup_venv() {
+    log_info "가상환경 설정 중..."
     
-    if [[ "$VIRTUAL_ENV" != "" ]]; then
-        log_success "가상환경 활성화됨: $VIRTUAL_ENV"
+    # Jenkins 환경에서는 시스템 Python 사용 고려
+    if [[ "$JENKINS_MODE" == "true" ]]; then
+        log_info "Jenkins 환경: 시스템 Python 사용"
+        
+        # 가상환경 없이 시스템 Python 사용
+        export USE_SYSTEM_PYTHON=true
+        
+        # pip 설치 확인
+        if ! command -v pip3 &> /dev/null; then
+            log_info "pip3 설치 중..."
+            sudo apt update
+            sudo apt install -y python3-pip
+        fi
+        
+        # 필요한 패키지 설치
+        log_info "시스템 Python에 패키지 설치 중..."
+        pip3 install --user -r requirements.txt
+        
+        # PATH에 사용자 bin 추가
+        export PATH="$HOME/.local/bin:$PATH"
+        
+        log_success "시스템 Python 설정 완료"
     else
-        log_error "가상환경 활성화 실패"
-        exit 1
+        # 일반 환경에서는 가상환경 사용
+        if [[ ! -d "venv" ]]; then
+            log_info "가상환경 생성 중..."
+            
+            # 권한 문제 해결을 위한 디렉토리 확인
+            if [[ ! -w "." ]]; then
+                log_error "현재 디렉토리에 쓰기 권한이 없습니다"
+                exit 1
+            fi
+            
+            python3 -m venv venv
+            log_success "가상환경 생성 완료"
+        fi
+        
+        # 가상환경 활성화
+        source venv/bin/activate
+        
+        if [[ "$VIRTUAL_ENV" != "" ]]; then
+            log_success "가상환경 활성화됨: $VIRTUAL_ENV"
+        else
+            log_error "가상환경 활성화 실패"
+            exit 1
+        fi
     fi
 }
 
@@ -89,7 +131,13 @@ install_packages() {
     log_info "필요한 패키지 설치 중..."
     
     if [[ -f "requirements.txt" ]]; then
-        pip install -r requirements.txt
+        if [[ "$JENKINS_MODE" == "true" ]]; then
+            # Jenkins 환경에서는 --user 옵션 사용
+            pip3 install --user -r requirements.txt
+        else
+            # 일반 환경에서는 가상환경에 설치
+            pip install -r requirements.txt
+        fi
         log_success "패키지 설치 완료"
     else
         log_error "requirements.txt 파일을 찾을 수 없습니다"
@@ -113,6 +161,13 @@ setup_environment() {
     
     # 메모리 최적화 설정
     export CHROME_OPTIONS="--no-sandbox --disable-dev-shm-usage --disable-gpu --disable-extensions --disable-plugins --disable-images --disable-javascript"
+    
+    # Jenkins 환경 특별 설정
+    if [[ "$JENKINS_MODE" == "true" ]]; then
+        export DISPLAY=:99
+        export PYTHONPATH="${PYTHONPATH}:${PWD}"
+        log_info "Jenkins 환경 변수 설정 완료"
+    fi
     
     log_success "환경 변수 설정 완료"
 }
@@ -151,13 +206,32 @@ run_tests() {
     export BROWSER=$BROWSER
     export HEADLESS=$HEADLESS
     
+    # Jenkins 환경에서는 가상 디스플레이 시작
+    if [[ "$JENKINS_MODE" == "true" ]]; then
+        log_info "Jenkins 환경: 가상 디스플레이 시작"
+        Xvfb :99 -screen 0 1280x720x24 &
+        export DISPLAY=:99
+        sleep 2
+    fi
+    
     # 테스트 실행
-    python -m pytest $TEST_PATH \
-        -v \
-        --html=reports/report.html \
-        --self-contained-html \
-        --tb=short \
-        --disable-warnings
+    if [[ "$JENKINS_MODE" == "true" ]]; then
+        # Jenkins 환경에서는 python3 직접 사용
+        python3 -m pytest $TEST_PATH \
+            -v \
+            --html=reports/report.html \
+            --self-contained-html \
+            --tb=short \
+            --disable-warnings
+    else
+        # 일반 환경에서는 가상환경의 python 사용
+        python -m pytest $TEST_PATH \
+            -v \
+            --html=reports/report.html \
+            --self-contained-html \
+            --tb=short \
+            --disable-warnings
+    fi
     
     if [[ $? -eq 0 ]]; then
         log_success "테스트 실행 완료"
@@ -170,6 +244,12 @@ run_tests() {
 # 결과 정리
 cleanup() {
     log_info "정리 작업 중..."
+    
+    # Jenkins 환경에서 가상 디스플레이 정리
+    if [[ "$JENKINS_MODE" == "true" ]]; then
+        pkill Xvfb 2>/dev/null || true
+        log_info "가상 디스플레이 정리 완료"
+    fi
     
     # 오래된 스크린샷 정리 (7일 이상)
     find reports/screenshots -name "*.png" -mtime +7 -delete 2>/dev/null || true
@@ -185,7 +265,7 @@ main() {
     echo "시작 시간: $(date)"
     
     check_system
-    activate_venv
+    setup_venv
     install_packages
     setup_environment
     run_tests "$@"
