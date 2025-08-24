@@ -2,6 +2,7 @@
 
 # Jenkins 환경용 Selenium 테스트 실행 스크립트
 # Jenkins CI/CD 파이프라인에서 사용하기 위해 최적화되었습니다.
+# sudo 권한 없이 실행 가능합니다.
 
 set -e
 
@@ -47,39 +48,39 @@ check_jenkins_environment() {
     fi
 }
 
-# 시스템 의존성 설치
-install_dependencies() {
-    log_info "시스템 의존성 설치 중..."
+# 시스템 의존성 확인 (sudo 없이)
+check_dependencies() {
+    log_info "시스템 의존성 확인 중..."
     
-    # Ubuntu/Debian 패키지 업데이트
-    sudo apt update
-    
-    # 필수 패키지 설치
-    sudo apt install -y \
-        python3 \
-        python3-pip \
-        python3-venv \
-        xvfb \
-        libxi6 \
-        libgconf-2-4 \
-        default-jdk \
-        xorg \
-        openbox \
-        x11-xserver-utils \
-        wget \
-        curl \
-        unzip
-    
-    # Chrome 설치 (없는 경우)
-    if ! command -v google-chrome &> /dev/null; then
-        log_info "Chrome 설치 중..."
-        wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
-        echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
-        sudo apt update
-        sudo apt install -y google-chrome-stable
+    # Python 확인
+    if ! command -v python3 &> /dev/null; then
+        log_error "Python3가 설치되지 않았습니다. 시스템 관리자에게 문의하세요."
+        exit 1
     fi
     
-    log_success "시스템 의존성 설치 완료"
+    # pip 확인
+    if ! command -v pip3 &> /dev/null; then
+        log_error "pip3가 설치되지 않았습니다. 시스템 관리자에게 문의하세요."
+        exit 1
+    fi
+    
+    # Chrome 확인
+    if ! command -v google-chrome &> /dev/null; then
+        log_warning "Chrome이 설치되지 않았습니다. 시스템 관리자에게 설치를 요청하세요."
+        log_info "Chrome 설치 명령어: sudo apt install google-chrome-stable"
+    else
+        log_success "Chrome 확인됨: $(google-chrome --version)"
+    fi
+    
+    # Xvfb 확인
+    if ! command -v Xvfb &> /dev/null; then
+        log_warning "Xvfb가 설치되지 않았습니다. 시스템 관리자에게 설치를 요청하세요."
+        log_info "Xvfb 설치 명령어: sudo apt install xvfb"
+    else
+        log_success "Xvfb 확인됨"
+    fi
+    
+    log_success "의존성 확인 완료"
 }
 
 # Python 환경 설정
@@ -154,6 +155,14 @@ setup_environment() {
 # 가상 디스플레이 시작
 start_virtual_display() {
     log_info "가상 디스플레이 시작 중..."
+    
+    # Xvfb가 설치되어 있는지 확인
+    if ! command -v Xvfb &> /dev/null; then
+        log_warning "Xvfb가 설치되지 않았습니다. 가상 디스플레이를 시작할 수 없습니다."
+        log_info "시스템 관리자에게 다음 명령어로 설치를 요청하세요:"
+        log_info "sudo apt install xvfb"
+        return 1
+    fi
     
     # 기존 Xvfb 프로세스 종료
     pkill Xvfb 2>/dev/null || true
@@ -250,7 +259,7 @@ main() {
     echo "작업 디렉토리: $(pwd)"
     
     check_jenkins_environment
-    install_dependencies
+    check_dependencies
     setup_python_environment
     setup_environment
     start_virtual_display

@@ -24,25 +24,23 @@ pipeline {
             }
         }
         
-        stage('Setup Environment') {
+        stage('Check Dependencies') {
             steps {
-                echo '⚙️ 환경 설정 중...'
+                echo '🔍 시스템 의존성 확인 중...'
                 script {
-                    // 시스템 패키지 업데이트
+                    // 필수 도구들 확인
                     sh '''
-                        sudo apt update
-                        sudo apt install -y python3 python3-pip python3-venv xvfb
-                    '''
-                    
-                    // Chrome 설치 확인
-                    sh '''
-                        if ! command -v google-chrome &> /dev/null; then
-                            echo "Chrome 설치 중..."
-                            wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
-                            echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
-                            sudo apt update
-                            sudo apt install -y google-chrome-stable
-                        fi
+                        echo "Python3 확인:"
+                        python3 --version || { echo "❌ Python3가 설치되지 않았습니다"; exit 1; }
+                        
+                        echo "pip3 확인:"
+                        pip3 --version || { echo "❌ pip3가 설치되지 않았습니다"; exit 1; }
+                        
+                        echo "Chrome 확인:"
+                        google-chrome --version || { echo "⚠️ Chrome이 설치되지 않았습니다. 시스템 관리자에게 설치를 요청하세요"; }
+                        
+                        echo "Xvfb 확인:"
+                        Xvfb -version || { echo "⚠️ Xvfb가 설치되지 않았습니다. 시스템 관리자에게 설치를 요청하세요"; }
                     '''
                 }
             }
@@ -50,7 +48,7 @@ pipeline {
         
         stage('Install Dependencies') {
             steps {
-                echo '📦 의존성 설치 중...'
+                echo '📦 Python 의존성 설치 중...'
                 script {
                     // Python 패키지 설치 (사용자 디렉토리에)
                     sh '''
